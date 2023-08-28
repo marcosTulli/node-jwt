@@ -6,8 +6,10 @@ const { json } = require('express');
 // const users = './database/users.json';
 const users = path.join(__dirname, 'database', 'users.json');
 const inventory = path.join(__dirname, 'database', 'books.json');
+const constants = require('./constants');
+const jwt = require('jsonwebtoken');
 
-let getUserByUsername = async function (username) {
+const getUserByUsername = async function (username) {
   try {
     const allUsers = await jsonfile.readFile(users);
     const filteredUserArray = allUsers.filter((user) => user.username === username);
@@ -59,6 +61,35 @@ exports.addBook = async function (book) {
     return await jsonfile.writeFile(inventory, allBooks);
   } catch (err) {
     return err;
+  }
+};
+
+const getUsernameFromToken = (token) => jwt.decode(token)['sub'];
+
+exports.generateToken = async function (prevToken, userName) {
+  const name = userName || getUsernameFromToken(prevToken);
+  const user = await getUserByUsername(name);
+  const options = {
+    algorithm: process.env.ALGORITHM,
+    expiresIn: process.env.EXPPIRY,
+    issuer: process.env.ISSUER,
+    subject: userName || user.username,
+    audience:
+      user.role === 'admin' ? constants.JWT_OPTIONS.ADMIN_AUDIENCE : constants.JWT_OPTIONS.MEMBER_AUDIENCE,
+  };
+  return jwt.sign({}, process.env.SECRET, options);
+};
+
+exports.verifyToken = (req, res, next) => {
+  const token = req.cookies.token;
+  if (!token) res.status(401).send({ message: 'Not authroized to access data' });
+  else {
+    jwt.verify(token, process.env.SECRET, function (err) {
+      if (err) {
+        res.clearCooke('token');
+        res.status(401).send({ message: 'Pleas try again' });
+      } else next();
+    });
   }
 };
 
