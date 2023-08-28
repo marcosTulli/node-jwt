@@ -2,6 +2,7 @@ const path = require('path');
 const dotenv = path.join(__dirname, 'server', '.env');
 require('dotenv').config({ path: dotenv });
 const express = require('express');
+const chalk = require('chalk');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const { uuid } = require('uuidv4');
@@ -23,15 +24,105 @@ const app = express();
 const port = process.env.PORT || 5000;
 app.listen(port, () => console.log(`Listening on port ${port}`));
 app.use(express.json());
-app.use(cors());
-app.use(cookieParser);
+// app.use(cors());
+app.use(cookieParser());
 
-app.get('/users', (req, res) => {
-  getAllUsers().then((users) => {
-    if (users && users.length > 0) res.status(200).send({ users: users });
-    else res.status(500).send({ users: [] });
+app.post('/login', (req, res) => {
+  let base64Encoding = req.headers.authorization.split(' ')[1];
+  const credentials = Buffer.from(base64Encoding, 'base64').toString('utf-8');
+  const [username, password] = credentials.split(':');
+  getUserByUsername(username).then((user) => {
+    if (user && !isEmptyObject(user)) {
+      console.log(chalk.blue('Received user: ', username));
+      isCredentialValid(user.username, password).then((result) => {
+        if (!result) {
+          res.status(401).send({ msessage: 'username or password is incorrect' });
+          console.log(chalk.red('FAILED LOGIN'));
+        } else {
+          generateToken(null, username).then((token) => {
+            console.log(chalk.green('LOGIN OK, user role: ', user.role));
+            res.cookie('token', token, { httpOnly: true });
+            res.status(200).send({ username: user.username, role: user.role });
+          });
+        }
+      });
+    } else res.status(401).send({ message: 'username or password is incorrect' });
   });
 });
+
+app.get('/users', verifyToken, (req, res) => {
+  console.log(chalk.blue('Requested route to /users ', req.headers));
+  if (getAudienceFromToken(req.cookies.token).includes(constants.SHOW_USERS)) {
+    console.log(chalk.blue('Redirecting /users '));
+    getAllUsers().then((users) => {
+      if (users && users.length > 0) {
+        generateToken(req.cookies.token, null).then((token) => {
+          console.log(chalk.green('Redirect OK'));
+          res.cookie('token', token, { httpOnly: true });
+          res.status(200).send({ users: users });
+        });
+      } else res.status(500).send({ users: [] });
+    });
+  } else {
+    console.log(chalk.red('User not authorized to view users '));
+    res.status(403).send({ message: 'Not authorized to view  users' });
+  }
+});
+app.get('/books', verifyToken, (req, res) => {
+  console.log(chalk.blue('Requested route to /books ', req.headers));
+  getAllBooks().then((books) => {
+    if (books && books.length > 0) {
+      generateToken(req.cookies.token, null).then((token) => {
+        console.log(chalk.green('Redirecting to  /books '));
+        res.cookie('token', token, { httpOnly: true });
+        res.status(200).send({ books: books });
+      });
+    } else {
+      console.log(chalk.red('Redirection failed'));
+      res.status(500).send({ books: [] });
+    }
+  });
+});
+
+app.get('/favorite', verifyToken, (req, res) => {
+  getFavoriteBooksForUser(req.cookies.token).then((books) =>
+    generateToken(req.cookies.token, null).then((token) => {
+      console.log(chalk.green('Requested favorite books: '));
+      console.log(books);
+      res.cookie('token', token, { httpOnly: true });
+      res.status(200).send({ favorites: books });
+    })
+  );
+});
+
+app.post('/book', verifyToken, (req, res) => {
+  if (!req.body.name || !req.body.author) {
+    res.status(400).send({ message: 'Invalid Book' });
+  } else {
+    if (getAudienceFromToken(req.cookies.token).includes(constants.ADD_BOOK)) {
+      addBook({ name: req.body.name, author: req.body.author, id: uuid() }).then((err) => {
+        if (err) res.status(500).send({ message: 'Cannot add this book' });
+        else {
+          generateToken(req.cookies.token, null).then((token) => {
+            console.log(chalk.green('Book added', req.body.name));
+            res.cookie('token', token, { httpOnly: true });
+            res.status(200).send({ message: 'Book added succesfully' });
+          });
+        }
+      });
+    } else {
+      console.log(chalk.red('User not authorized to add book'));
+      res.status(403).send({ message: 'Not authorized to add books' });
+    }
+  }
+});
+
+app.get('/logout', verifyToken, (req, res) => {
+  console.log(chalk.green('Logged out'));
+  res.clearCookie('token');
+  res.status(200).send({ message: 'Cookies cleared' });
+});
+
 // app.get('/users', verifyToken, (req, res) => {
 // const token = req.headers.authorization.split(' ')[1];
 // if (getAudienceFromToken(token).includes(Constants.SHOW_USERS)) {
@@ -45,13 +136,6 @@ app.get('/users', (req, res) => {
 // } else res.status(403).send({ message: 'Not authorized to view users', token: token });
 // });
 
-app.get('/books', (req, res) => {
-  getAllBooks().then((books) => {
-    if (books && books.length > 0) res.status(200).send({ books: books });
-    else res.status(500).send({ books: [] });
-  });
-});
-
 // app.get('/books', verifyToken, (req, res) => {
 //   const token = req.headers.authorization.split(' ')[1];
 //   getAllBooks().then((books) => {
@@ -62,26 +146,6 @@ app.get('/books', (req, res) => {
 //     } else res.status(500).send({ books: [], token: token });
 //   });
 // });
-
-app.post('/login', (req, res) => {
-  let base64Encoding = req.headers.authorization.split(' ')[1];
-  const credentials = Buffer.from(base64Encoding, 'base64').toString('utf-8');
-  const [username, password] = credentials.split(':');
-  getUserByUsername(username).then((user) => {
-    if (user && !isEmptyObject(user)) {
-      isCredentialValid(user.username, password).then((result) => {
-        if (!result) {
-          res.status(401).send({ msessage: 'username or password is incorrect' });
-        } else {
-          generateToken(null, username).then((token) => {
-            res.cookie('token', token, { httpOnly: true });
-            res.status(200).send({ username: user.username, role: user.role });
-          });
-        }
-      });
-    } else res.status(401).send({ message: 'username or password is incorrect' });
-  });
-});
 
 // app.post('/login', (req, res) => {
 //   let base64Encoding = req.headers.authorization.split(' ')[1];
@@ -129,12 +193,7 @@ app.post('/login', (req, res) => {
 // });
 // });
 
-app.post('/book', (req, res) => {
-  addBook({ name: req.body.name, author: req.body.author, id: uuid() }).then((err) => {
-    if (err) res.status(500).send({ message: 'Cannot add this book' });
-    else res.status(200).send({ message: 'Book added succesfully' });
-  });
-}); // app.post('/book', verifyToken, (req, res) => {
+// app.post('/book', verifyToken, (req, res) => {
 // const token = req.headers.authorization.split(' ')[1];
 // if (getAudienceFromToken(token).includes(Constants.ADD_BOOK)) {
 //   addBook({ name: req.body.name, author: req.body.author, id: uuid() }).then((err) => {

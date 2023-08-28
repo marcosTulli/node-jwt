@@ -2,8 +2,6 @@ const jsonfile = require('jsonfile');
 const bcrypt = require('bcrypt');
 const path = require('path');
 const { json } = require('express');
-// const inventory = './database/books.json';
-// const users = './database/users.json';
 const users = path.join(__dirname, 'database', 'users.json');
 const inventory = path.join(__dirname, 'database', 'books.json');
 const constants = require('./constants');
@@ -95,10 +93,10 @@ exports.verifyToken = (req, res, next) => {
   const token = req.cookies.token;
   if (!token) res.status(401).send({ message: 'Not authroized to access data' });
   else {
-    jwt.verify(token, process.env.SECRET, function (err) {
+    jwt.verify(token, constants.SECRET, function (err) {
       if (err) {
-        res.clearCooke('token');
-        res.status(401).send({ message: 'Pleas try again' });
+        res.clearCookie('token');
+        res.status(401).send({ message: 'Please try again' });
       } else next();
     });
   }
@@ -106,6 +104,19 @@ exports.verifyToken = (req, res, next) => {
 
 exports.isPasswordCorrect = async function (key, password) {
   return bcrypt.compare(password, key).then((result) => result);
+};
+
+exports.getAudienceFromToken = (token) => jwt.decode(token)['aud'];
+
+exports.getFavoriteBooksForUser = async function (token) {
+  const username = getUsernameFromToken(token);
+  const user = await getUserByUsername(username);
+  const favoriteBookIds = user['favorite'];
+  const favoriteBooks = [];
+  if (favoriteBookIds.length === 0) return favoriteBooks;
+  const allBooks = await jsonfile.readFile(inventory);
+  favoriteBookIds.forEach((id) => favoriteBooks.push(allBooks.filter((book) => id === book.id)[0]));
+  return favoriteBooks;
 };
 
 // const jsonfile = require("jsonfile");

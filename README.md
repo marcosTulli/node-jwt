@@ -136,6 +136,7 @@ deeksha30
 kdje89#$%
 ```
 
+// "proxy": "http://localhost:5000",
 **Admin**
 
 ```bash
