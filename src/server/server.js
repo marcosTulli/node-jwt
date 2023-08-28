@@ -1,5 +1,8 @@
-require('dotenv').config({ path: './variables.env' });
+const path = require('path');
+const dotenv = path.join(__dirname, 'server', '.env');
+require('dotenv').config({ path: dotenv });
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const { uuid } = require('uuidv4');
 const {
@@ -15,12 +18,13 @@ const {
   generateToken,
   isCredentialValid,
 } = require('./shared');
-const Constants = require('./constants');
+const constants = require('./constants');
 const app = express();
 const port = process.env.PORT || 5000;
 app.listen(port, () => console.log(`Listening on port ${port}`));
 app.use(express.json());
 app.use(cors());
+app.use(cookieParser);
 
 app.get('/users', (req, res) => {
   getAllUsers().then((users) => {
@@ -63,34 +67,54 @@ app.post('/login', (req, res) => {
   let base64Encoding = req.headers.authorization.split(' ')[1];
   const credentials = Buffer.from(base64Encoding, 'base64').toString('utf-8');
   const [username, password] = credentials.split(':');
-  isCredentialValid(username, password).then((result) => {
-    if (!result) res.status(401).send({ message: 'username or password is incorrect' });
-    else res.status(200).send({ user: { username: result.username, role: result.role } });
+  getUserByUsername(username).then((user) => {
+    if (user && !isEmptyObject(user)) {
+      isCredentialValid(user.username, password).then((result) => {
+        if (!result) {
+          res.status(401).send({ msessage: 'username or password is incorrect' });
+        } else {
+          generateToken(null, username).then((token) => {
+            res.cookie('token', token, { httpOnly: true });
+            res.status(200).send({ username: user.username, role: user.role });
+          });
+        }
+      });
+    } else res.status(401).send({ message: 'username or password is incorrect' });
   });
-
-  // let base64Encoding = req.headers.authorization.split(" ")[1];
-  // let credentials = Buffer.from(base64Encoding, "base64").toString().split(":");
-  // const username = credentials[0];
-  // const password = credentials[1];
-  // getUserByUsername(username).then((user) => {
-  //   if (user && !isEmptyObject(user)) {
-  //     isPasswordCorrect(user.key, password).then((result) => {
-  //       if (!result)
-  //         res
-  //           .status(401)
-  //           .send({ message: "username or password is incorrect" });
-  //       else {
-  //         generateToken(null, username).then((token) => {
-  //           res
-  //             .status(200)
-  //             .send({ username: user.username, role: user.role, token: token });
-  //         });
-  //       }
-  //     });
-  //   } else
-  //     res.status(401).send({ message: "username or password is incorrect" });
-  // });
 });
+
+// app.post('/login', (req, res) => {
+//   let base64Encoding = req.headers.authorization.split(' ')[1];
+//   const credentials = Buffer.from(base64Encoding, 'base64').toString('utf-8');
+//   const [username, password] = credentials.split(':');
+//   isCredentialValid(username, password).then((result) => {
+//     if (!result) res.status(401).send({ message: 'username or password is incorrect' });
+//     else res.status(200).send({ user: { username: result.username, role: result.role } });
+//   });
+
+// let base64Encoding = req.headers.authorization.split(" ")[1];
+// let credentials = Buffer.from(base64Encoding, "base64").toString().split(":");
+// const username = credentials[0];
+// const password = credentials[1];
+// getUserByUsername(username).then((user) => {
+//   if (user && !isEmptyObject(user)) {
+//     isPasswordCorrect(user.key, password).then((result) => {
+//       if (!result)
+//         res
+//           .status(401)
+//           .send({ message: "username or password is incorrect" });
+//       else {
+//         generateToken(null, username).then((token) => {
+//           res
+//             .status(200)
+//             .send({ username: user.username, role: user.role, token: token });
+//         });
+//       }
+//     });
+//   } else
+//     res.status(401).send({ message: "username or password is incorrect" });
+// });
+// });
 
 // app.get('/logout', verifyToken, (req, res) => {
 // res.status(200).send({ message: 'Signed out' });

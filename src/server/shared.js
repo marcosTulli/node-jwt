@@ -8,8 +8,19 @@ const users = path.join(__dirname, 'database', 'users.json');
 const inventory = path.join(__dirname, 'database', 'books.json');
 const constants = require('./constants');
 const jwt = require('jsonwebtoken');
+const chalk = require('chalk');
 
 const getUserByUsername = async function (username) {
+  try {
+    const allUsers = await jsonfile.readFile(users);
+    const filteredUserArray = allUsers.filter((user) => user.username === username);
+    return filteredUserArray.length === 0 ? {} : filteredUserArray[0];
+  } catch (err) {
+    console.log('Error reading users: ', err.message);
+  }
+};
+
+exports.getUserByUsername = async function (username) {
   try {
     const allUsers = await jsonfile.readFile(users);
     const filteredUserArray = allUsers.filter((user) => user.username === username);
@@ -70,14 +81,14 @@ exports.generateToken = async function (prevToken, userName) {
   const name = userName || getUsernameFromToken(prevToken);
   const user = await getUserByUsername(name);
   const options = {
-    algorithm: process.env.ALGORITHM,
-    expiresIn: process.env.EXPPIRY,
-    issuer: process.env.ISSUER,
+    algorithm: constants.ALGORITHM,
+    expiresIn: constants.EXPIRY,
+    issuer: constants.ISSUER,
     subject: userName || user.username,
     audience:
       user.role === 'admin' ? constants.JWT_OPTIONS.ADMIN_AUDIENCE : constants.JWT_OPTIONS.MEMBER_AUDIENCE,
   };
-  return jwt.sign({}, process.env.SECRET, options);
+  return jwt.sign({}, constants.SECRET, options);
 };
 
 exports.verifyToken = (req, res, next) => {
@@ -91,6 +102,10 @@ exports.verifyToken = (req, res, next) => {
       } else next();
     });
   }
+};
+
+exports.isPasswordCorrect = async function (key, password) {
+  return bcrypt.compare(password, key).then((result) => result);
 };
 
 // const jsonfile = require("jsonfile");
