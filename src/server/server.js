@@ -51,7 +51,7 @@ app.post('/login', (req, res) => {
 });
 
 app.get('/users', verifyToken, (req, res) => {
-  console.log(chalk.blue('Requested route to /users ', req.headers));
+  console.log(chalk.blue('Requested route to /users '));
   if (getAudienceFromToken(req.cookies.token).includes(constants.SHOW_USERS)) {
     console.log(chalk.blue('Redirecting /users '));
     getAllUsers().then((users) => {
@@ -69,7 +69,7 @@ app.get('/users', verifyToken, (req, res) => {
   }
 });
 app.get('/books', verifyToken, (req, res) => {
-  console.log(chalk.blue('Requested route to /books ', req.headers));
+  console.log(chalk.blue('Requested route to /books '));
   getAllBooks().then((books) => {
     if (books && books.length > 0) {
       generateToken(req.cookies.token, null).then((token) => {
